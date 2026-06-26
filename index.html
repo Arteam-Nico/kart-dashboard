@@ -311,6 +311,167 @@
   @media (min-width: 481px) {
     #setup, #app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
   }
+
+  /* ===== Mode Stand — plein écran, une seule tâche ===== */
+  #pitmode {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 100;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  #pitmode.active { display: flex; }
+  #pitmode.released { background: #0d1f14; }
+
+  .pit-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+  .pit-eyebrow.released { color: var(--green); }
+
+  .pit-zone-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 6px 16px;
+    border-radius: 999px;
+    margin-bottom: 16px;
+    background: var(--bg-card);
+  }
+  .pit-zone-label.under { color: var(--red); background: rgba(224,82,74,0.12); }
+  .pit-zone-label.risky { color: #E8A23A; background: rgba(232,162,58,0.12); }
+  .pit-zone-label.ideal { color: var(--green); background: rgba(63,166,107,0.14); }
+  .pit-zone-label.over { color: var(--yellow); background: rgba(244,196,48,0.12); }
+
+  .pit-clock {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 76px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+  .pit-clock.under { color: var(--red); }
+  .pit-clock.risky { color: #E8A23A; }
+  .pit-clock.ideal { color: var(--green); }
+  .pit-clock.over { color: var(--yellow); }
+
+  .pit-target {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-faint);
+    margin-top: 10px;
+  }
+
+  /* Barre de zones : représentation visuelle continue rouge -> orange -> vert -> jaune,
+     avec un repère fixe (le seuil minimum) et un marqueur qui avance avec le chrono. */
+  .pit-zonebar {
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    height: 14px;
+    border-radius: 7px;
+    margin-top: 24px;
+    background: linear-gradient(
+      to right,
+      var(--red) 0%, var(--red) 38%,
+      #E8A23A 38%, #E8A23A 50%,
+      var(--green) 50%, var(--green) 62%,
+      var(--yellow) 62%, var(--yellow) 100%
+    );
+    overflow: visible;
+  }
+  .pit-zonebar-fill { display: none; } /* la fill n'est plus nécessaire avec le gradient fixe ; le marker indique la position */
+  .pit-zonebar-marker {
+    position: absolute;
+    top: -5px;
+    left: 38%;
+    width: 3px;
+    height: 24px;
+    background: #fff;
+    border-radius: 2px;
+    box-shadow: 0 0 6px rgba(255,255,255,0.6);
+    transition: left 0.15s linear;
+  }
+
+  .pit-delta {
+    margin-top: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    padding: 10px 22px;
+    border-radius: 10px;
+    background: var(--bg-card);
+  }
+  .pit-delta.under { color: var(--red); }
+  .pit-delta.risky { color: #E8A23A; }
+  .pit-delta.ideal { color: var(--green); }
+  .pit-delta.over { color: var(--yellow); }
+
+  .pit-hint {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--text-faint);
+    max-width: 280px;
+    line-height: 1.5;
+  }
+
+  .btn-release {
+    margin-top: 44px;
+    width: 100%;
+    max-width: 320px;
+    background: var(--yellow);
+    color: #1a1400;
+    border: none;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    padding: 22px;
+    border-radius: 14px;
+  }
+  .btn-release:active { transform: scale(0.98); }
+
+  .pit-result {
+    margin-top: 32px;
+    width: 100%;
+    max-width: 320px;
+  }
+  .pit-result-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+  }
+  .pit-result-row span:first-child { color: var(--text-faint); }
+  .btn-continue {
+    margin-top: 24px;
+    width: 100%;
+    max-width: 320px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .pit-history {
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+  }
 </style>
 </head>
 <body>
@@ -337,6 +498,15 @@
     <label>Adversaires à suivre (jusqu'à 5)</label>
     <input id="f-rivals" placeholder="ex: 25, 28, 31, 35, 38" />
     <div class="hint">IDs séparés par des virgules. Ce sont les karts contre qui tu te bats en piste.</div>
+  </div>
+
+  <div class="field">
+    <label>Temps minimum imposé au stand</label>
+    <div class="row-2">
+      <input id="f-pit-min" inputmode="numeric" placeholder="min" value="2" />
+      <input id="f-pit-sec" inputmode="numeric" placeholder="sec" value="0" />
+    </div>
+    <div class="hint">Règlement de cette course précise — peut changer d'une épreuve à l'autre.</div>
   </div>
 
   <button class="btn-primary" id="btn-connect">Rejoindre la course</button>
@@ -391,6 +561,35 @@
   </div>
 </div>
 
+<!-- ============ MODE STAND — plein écran, une tâche ============ -->
+<div id="pitmode">
+  <div class="pit-eyebrow" id="pit-eyebrow">NOTRE KART EST AU STAND</div>
+
+  <div class="pit-zone-label" id="pit-zone-label">EN DESSOUS DU MINIMUM</div>
+  <div class="pit-clock" id="pit-clock">0:00.0</div>
+  <div class="pit-target" id="pit-target">Cible : 2:00.5 – 2:01.0</div>
+
+  <div class="pit-zonebar" id="pit-zonebar">
+    <div class="pit-zonebar-fill" id="pit-zonebar-fill"></div>
+    <div class="pit-zonebar-marker" id="pit-zonebar-marker"></div>
+  </div>
+
+  <div class="pit-delta" id="pit-delta">—</div>
+
+  <div class="pit-hint" id="pit-hint">Relâche le pilote dans la zone verte, idéalement pas après.</div>
+
+  <button class="btn-release" id="btn-release">RELÂCHER LE PILOTE</button>
+
+  <div class="pit-result" id="pit-result" style="display:none;">
+    <div class="pit-result-row"><span>Temps de stand réel</span><span id="result-actual">—</span></div>
+    <div class="pit-result-row"><span>Fenêtre cible</span><span id="result-target">—</span></div>
+    <div class="pit-result-row"><span>Écart</span><span id="result-delta">—</span></div>
+  </div>
+  <button class="btn-continue" id="btn-continue" style="display:none;">Revenir au suivi de course</button>
+
+  <div class="pit-history" id="pit-history"></div>
+</div>
+
 <script>
 /* ============================================================
    ÉTAT & CONFIG
@@ -400,11 +599,13 @@ const REQUIRED_PIT_STOPS = 1;
 const APEX_ENDPOINT = "https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php";
 const POLL_INTERVAL_MS = 2000;
 
-let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [] };
+let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [], pitTargetMs: 120000 };
 let karts = {};
 let pollTimer = null;
-let discoveryTimer = null;
+let pitClockTimer = null;
 let consecutiveFailures = 0;
+let pitMode = { active: false, released: false, releasedAt: null, history: [] };
+let lastKnownPitState = false; // pour détecter la transition false->true sur NOTRE kart
 
 /* ============================================================
    UTILS
@@ -769,6 +970,175 @@ function render() {
       );
     })
     .join("");
+
+  checkPitTransition(us);
+}
+
+/* ============================================================
+   MODE STAND — détection automatique + chrono + relâche
+   ============================================================ */
+function checkPitTransition(us) {
+  if (!us) return;
+  // Transition false -> true : notre kart vient d'entrer au stand.
+  if (us.inPit && !lastKnownPitState && !pitMode.active) {
+    enterPitMode(us);
+  }
+  // Si Apex a déjà confirmé la sortie (*out) avant qu'on ait cliqué nous-mêmes
+  // (cas où le bouton a été manqué), on ferme le mode automatiquement.
+  if (!us.inPit && pitMode.active && !pitMode.released) {
+    exitPitModeSilently();
+  }
+  lastKnownPitState = us.inPit;
+}
+
+/* Constantes de la fenêtre cible, relatives au minimum réglementaire :
+   - en dessous du minimum            -> ROUGE (pénalité)
+   - minimum à minimum+RISKY_MS       -> ORANGE (techniquement ok mais trop juste)
+   - minimum+RISKY_MS à minimum+IDEAL_MS -> VERT (zone visée)
+   - au-delà de minimum+IDEAL_MS      -> JAUNE (temps perdu) */
+const PIT_RISKY_MS = 500;  // jusqu'à +0.5s : zone risquée
+const PIT_IDEAL_MS = 1000; // jusqu'à +1.0s : fin de la zone idéale
+
+function pitZoneFor(elapsedMs) {
+  const delta = elapsedMs - config.pitTargetMs;
+  if (delta < 0) return "under";
+  if (delta < PIT_RISKY_MS) return "risky";
+  if (delta < PIT_IDEAL_MS) return "ideal";
+  return "over";
+}
+
+function pitZoneLabel(zone) {
+  switch (zone) {
+    case "under": return "EN DESSOUS DU MINIMUM";
+    case "risky": return "TROP JUSTE — ATTENDS ENCORE";
+    case "ideal": return "ZONE IDÉALE — RELÂCHE";
+    case "over": return "TEMPS PERDU";
+  }
+}
+
+function enterPitMode(us) {
+  pitMode = { active: true, released: false, releasedAt: null, history: pitMode.history };
+  document.getElementById("pitmode").className = "active";
+  document.getElementById("pit-eyebrow").textContent = "NOTRE KART EST AU STAND";
+  document.getElementById("pit-eyebrow").className = "pit-eyebrow";
+  document.getElementById("pit-target").textContent =
+    "Cible : " + fmt(config.pitTargetMs + PIT_RISKY_MS, false) + " – " + fmt(config.pitTargetMs + PIT_IDEAL_MS, false);
+  document.getElementById("btn-release").style.display = "block";
+  document.getElementById("pit-result").style.display = "none";
+  document.getElementById("btn-continue").style.display = "none";
+  document.getElementById("pit-hint").style.display = "block";
+  buildZonebarGradient();
+  if (pitClockTimer) clearInterval(pitClockTimer);
+  pitClockTimer = setInterval(() => updatePitClock(us.pitEnteredAt), 100);
+  updatePitClock(us.pitEnteredAt);
+}
+
+function buildZonebarGradient() {
+  // La barre ne représente PAS tout le temps écoulé depuis 0 (le rouge écraserait tout) :
+  // elle se concentre sur la zone qui compte, de (minimum - PRE_MS) à (minimum + IDEAL_MS + POST_MS).
+  const target = config.pitTargetMs;
+  const PRE_MS = 3000;  // 3s avant le minimum, visibles en rouge
+  const POST_MS = 3000; // 3s après la zone idéale, visibles en jaune
+  const windowStart = target - PRE_MS;
+  const windowEnd = target + PIT_IDEAL_MS + POST_MS;
+  const windowSpan = windowEnd - windowStart;
+
+  const pctUnder = ((target - windowStart) / windowSpan) * 100;
+  const pctRisky = ((target + PIT_RISKY_MS - windowStart) / windowSpan) * 100;
+  const pctIdeal = ((target + PIT_IDEAL_MS - windowStart) / windowSpan) * 100;
+
+  const bar = document.getElementById("pit-zonebar");
+  bar.style.background =
+    "linear-gradient(to right, " +
+    "var(--red) 0%, var(--red) " + pctUnder.toFixed(2) + "%, " +
+    "#E8A23A " + pctUnder.toFixed(2) + "%, #E8A23A " + pctRisky.toFixed(2) + "%, " +
+    "var(--green) " + pctRisky.toFixed(2) + "%, var(--green) " + pctIdeal.toFixed(2) + "%, " +
+    "var(--yellow) " + pctIdeal.toFixed(2) + "%, var(--yellow) 100%)";
+  bar.dataset.windowStart = windowStart;
+  bar.dataset.windowSpan = windowSpan;
+}
+
+function updatePitClock(enteredAt) {
+  if (!pitMode.active || pitMode.released) return;
+  const elapsed = Date.now() - enteredAt;
+  document.getElementById("pit-clock").textContent = fmt(elapsed, true).slice(0, -1); // dixièmes, plus lisible en grand
+  updatePitColors(elapsed);
+}
+
+function updatePitColors(elapsed) {
+  const zone = pitZoneFor(elapsed);
+  const delta = elapsed - config.pitTargetMs;
+
+  document.getElementById("pit-clock").className = "pit-clock " + zone;
+  document.getElementById("pit-delta").className = "pit-delta " + zone;
+  document.getElementById("pit-zone-label").className = "pit-zone-label " + zone;
+  document.getElementById("pit-zone-label").textContent = pitZoneLabel(zone);
+
+  const sign = delta < 0 ? "−" : "+";
+  document.getElementById("pit-delta").textContent = sign + (Math.abs(delta) / 1000).toFixed(1) + "s vs minimum";
+
+  const bar = document.getElementById("pit-zonebar");
+  const windowStart = parseFloat(bar.dataset.windowStart) || 0;
+  const windowSpan = parseFloat(bar.dataset.windowSpan) || 1;
+  const pct = Math.max(0, Math.min(100, ((elapsed - windowStart) / windowSpan) * 100));
+  document.getElementById("pit-zonebar-marker").style.left = pct + "%";
+}
+
+function exitPitModeSilently() {
+  // La sortie a été détectée par Apex sans qu'on ait cliqué "Relâcher" —
+  // on referme proprement sans afficher de résultat (donnée incomplète).
+  if (pitClockTimer) clearInterval(pitClockTimer);
+  document.getElementById("pitmode").className = "";
+  pitMode = { active: false, released: false, releasedAt: null, history: pitMode.history };
+}
+
+document.getElementById("btn-release").addEventListener("click", () => {
+  const us = getKart(config.myKart);
+  if (!us.pitEnteredAt) return;
+  const actualMs = Date.now() - us.pitEnteredAt;
+  const deltaMs = actualMs - config.pitTargetMs;
+  const zone = pitZoneFor(actualMs);
+  const zoneColor = { under: "var(--red)", risky: "#E8A23A", ideal: "var(--green)", over: "var(--yellow)" }[zone];
+
+  pitMode.released = true;
+  pitMode.releasedAt = Date.now();
+  pitMode.history.push({ actualMs, deltaMs, zone, at: Date.now() });
+  if (pitClockTimer) clearInterval(pitClockTimer);
+
+  document.getElementById("pit-eyebrow").textContent = "PILOTE RELÂCHÉ";
+  document.getElementById("pit-eyebrow").className = "pit-eyebrow released";
+  document.getElementById("pitmode").className = "active released";
+  document.getElementById("btn-release").style.display = "none";
+  document.getElementById("pit-hint").style.display = "none";
+
+  document.getElementById("result-actual").textContent = fmt(actualMs, true);
+  document.getElementById("result-target").textContent =
+    fmt(config.pitTargetMs + PIT_RISKY_MS, false) + " – " + fmt(config.pitTargetMs + PIT_IDEAL_MS, false);
+  const deltaEl = document.getElementById("result-delta");
+  const sign = deltaMs < 0 ? "−" : "+";
+  deltaEl.textContent = sign + (Math.abs(deltaMs) / 1000).toFixed(2) + "s (" + pitZoneLabel(zone) + ")";
+  deltaEl.style.color = zoneColor;
+
+  document.getElementById("pit-result").style.display = "block";
+  document.getElementById("btn-continue").style.display = "block";
+
+  renderPitHistory();
+});
+
+document.getElementById("btn-continue").addEventListener("click", () => {
+  document.getElementById("pitmode").className = "";
+  pitMode.active = false;
+});
+
+function renderPitHistory() {
+  const el = document.getElementById("pit-history");
+  if (pitMode.history.length === 0) { el.textContent = ""; return; }
+  const zoneShort = { under: "pénalité", risky: "juste", ideal: "idéal", over: "perdu" };
+  const lines = pitMode.history.map((h, i) => {
+    const sign = h.deltaMs < 0 ? "−" : "+";
+    return "Arrêt " + (i + 1) + " : " + fmt(h.actualMs, false) + " (" + sign + (Math.abs(h.deltaMs) / 1000).toFixed(1) + "s — " + (zoneShort[h.zone] || "") + ")";
+  });
+  el.innerHTML = lines.join("<br>");
 }
 
 /* ============================================================
@@ -789,6 +1159,9 @@ function saveConfig(c) {
 function startApp(c) {
   config = c;
   karts = {};
+  lastKnownPitState = false;
+  pitMode = { active: false, released: false, releasedAt: null, history: [] };
+  document.getElementById("pitmode").className = "";
   document.getElementById("setup").style.display = "none";
   document.getElementById("app").classList.add("active");
   setConnStatus("", "CONNEXION...");
@@ -806,6 +1179,9 @@ document.getElementById("btn-connect").addEventListener("click", () => {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 5);
+  const pitMin = parseInt(document.getElementById("f-pit-min").value.trim() || "2", 10);
+  const pitSec = parseInt(document.getElementById("f-pit-sec").value.trim() || "0", 10);
+  const pitTargetMs = (pitMin * 60 + pitSec) * 1000;
 
   const statusEl = document.getElementById("setup-status");
   if (!myTeamName) {
@@ -816,7 +1192,7 @@ document.getElementById("btn-connect").addEventListener("click", () => {
   statusEl.className = "";
   statusEl.textContent = "";
 
-  const c = { port, myTeamName, myKart: null, rivals };
+  const c = { port, myTeamName, myKart: null, rivals, pitTargetMs };
   saveConfig(c);
   startApp(c);
 });
@@ -839,6 +1215,9 @@ document.getElementById("btn-saved").addEventListener("click", () => {
     document.getElementById("f-port").value = saved.port || "8600";
     document.getElementById("f-myteam").value = saved.myTeamName || "ARTEAM";
     document.getElementById("f-rivals").value = (saved.rivals || []).join(", ");
+    const targetMs = saved.pitTargetMs || 120000;
+    document.getElementById("f-pit-min").value = Math.floor(targetMs / 60000);
+    document.getElementById("f-pit-sec").value = Math.round((targetMs % 60000) / 1000);
     document.getElementById("btn-saved").style.display = "block";
   }
 })();
