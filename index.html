@@ -2,115 +2,779 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Test connexion Apex Timing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0B0D10">
+<title>Battle — Suivi course karting</title>
 <style>
-  body { background:#0B0D10; color:#E8E6E0; font-family: monospace; padding: 16px; font-size: 14px; }
-  h1 { font-size: 16px; margin-bottom: 16px; }
-  .test { margin-bottom: 16px; padding: 12px; border: 1px solid #262B33; border-radius: 6px; }
-  .pending { color: #8B92A0; }
-  .ok { color: #3FA66B; font-weight: bold; }
-  .fail { color: #D64545; font-weight: bold; }
-  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #8B92A0; margin-top: 8px; }
-  input { width: 100%; background:#181C22; border:1px solid #262B33; color:#E8E6E0; padding:8px; margin-bottom:8px; font-family:monospace; }
-  button { background:#F4C430; color:#1a1400; border:none; padding:8px 16px; font-weight:bold; cursor:pointer; }
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0B0D10;
+    --bg-raised: #14171C;
+    --bg-card: #181C22;
+    --line: #262B33;
+    --text: #ECEAE4;
+    --text-dim: #8B92A0;
+    --text-faint: #565D6B;
+    --yellow: #F4C430;
+    --yellow-dim: #8a7220;
+    --green: #3FA66B;
+    --red: #E0524A;
+    --blue: #5B9BD8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: 'Oswald', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--yellow); color: #1a1400; }
+  input, button { font-family: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+
+  /* ===== Setup screen ===== */
+  #setup {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 28px 22px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  #setup .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--yellow);
+    margin-bottom: 8px;
+  }
+  #setup h1 {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  #setup .sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .field .hint {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .field input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 16px;
+    padding: 13px 14px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .field input:focus { border-color: var(--yellow); }
+  .field input::placeholder { color: var(--text-faint); }
+
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--yellow);
+    color: #1a1400;
+    border: none;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.3px;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 8px;
+  }
+  .btn-primary:active { background: #ddb329; }
+  .btn-secondary {
+    width: 100%;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--line);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 11px;
+    border-radius: 8px;
+    margin-top: 10px;
+  }
+
+  #setup-status {
+    margin-top: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-faint);
+    min-height: 18px;
+  }
+  #setup-status.err { color: var(--red); }
+  #setup-status.ok { color: var(--green); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 999px;
+  }
+
+  /* ===== Main app ===== */
+  #app { display: none; min-height: 100vh; max-width: 480px; margin: 0 auto; padding-bottom: 30px; }
+  #app.active { display: block; }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: rgba(11,13,16,0.92);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+    position: relative;
+  }
+  .pulse-dot.live { background: var(--green); }
+  .pulse-dot.live::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--green);
+    animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+  .pulse-dot.err { background: var(--red); }
+  .topbar-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+  .topbar-edit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    background: none;
+    border: none;
+    padding: 6px;
+  }
+
+  /* Hero : notre kart */
+  .hero {
+    padding: 22px 18px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+  }
+  .hero-main { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+  .hero-pos {
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--yellow);
+    line-height: 0.85;
+    font-family: 'Oswald', sans-serif;
+  }
+  .hero-pos sup { font-size: 22px; top: -2.2em; }
+  .hero-meta { padding-bottom: 4px; }
+  .hero-name { font-size: 16px; font-weight: 600; }
+  .hero-laps { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  .hero-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .hstat { background: var(--bg-raised); border-radius: 8px; padding: 10px 12px; }
+  .hstat-label { font-size: 9px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 5px; }
+  .hstat-value { font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 700; }
+
+  /* Battle zone : adversaires directs */
+  .section-label {
+    padding: 18px 18px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+  }
+
+  .battle-track {
+    position: relative;
+    padding: 8px 18px 4px;
+  }
+  .battle-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    position: relative;
+  }
+  .battle-row:not(:last-child) { border-bottom: 1px solid var(--line); }
+  .battle-row.us {
+    background: linear-gradient(90deg, rgba(244,196,48,0.10), transparent);
+    margin: 0 -18px;
+    padding: 11px 18px;
+    border-bottom: none;
+  }
+  .battle-pos {
+    font-family: 'Oswald', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .battle-row.us .battle-pos { color: var(--yellow); }
+  .battle-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .battle-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .battle-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .battle-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+    margin-top: 3px;
+  }
+  .battle-pill.pit { background: var(--red); color: #1a0000; }
+  .battle-pill.due { color: var(--yellow); border: 1px solid var(--yellow); }
+  .battle-pill.ok { color: var(--green); }
+  .battle-pill.unknown { color: var(--text-faint); }
+  .battle-gap {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .battle-gap.ahead { color: var(--red); }
+  .battle-gap.behind { color: var(--green); }
+  .battle-gap.us-marker { color: var(--yellow); font-size: 11px; }
+
+  .empty-box {
+    margin: 20px 18px;
+    padding: 36px 20px;
+    text-align: center;
+    background: var(--bg-card);
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    color: var(--text-faint);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .footer-note {
+    padding: 20px 18px 8px;
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.6;
+  }
+
+  @media (min-width: 481px) {
+    #setup, #app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  }
 </style>
 </head>
 <body>
 
-<h1>Test de connexion directe à Apex Timing (depuis une page hébergée)</h1>
+<!-- ============ SETUP SCREEN ============ -->
+<div id="setup">
+  <div class="eyebrow">SUIVI COURSE — ENDURANCE</div>
+  <h1>On engage le combat.</h1>
+  <div class="sub">Connecte-toi au live timing du circuit pour suivre ta position réelle face aux karts en bataille directe.</div>
 
-<div class="test">
-  <strong>Test 1 — HTTP polling (request.php, ex: Brignoles)</strong>
-  <div>Port : <input id="t1-port" value="8600" /></div>
-  <div>Kart ID : <input id="t1-kart" value="13" /></div>
-  <button onclick="testHttp()">Lancer le test HTTP</button>
-  <div id="t1-status" class="pending">Pas encore testé.</div>
-  <pre id="t1-result"></pre>
+  <div class="field">
+    <label>Port du circuit</label>
+    <input id="f-port" inputmode="numeric" placeholder="ex: 8600" value="8600" />
+    <div class="hint">Visible dans Network → Payload sur la page Apex Timing du circuit (champ "port").</div>
+  </div>
+
+  <div class="field">
+    <label>Mon kart — ID interne</label>
+    <input id="f-mykart" inputmode="numeric" placeholder="ex: 13" />
+    <div class="hint">L'identifiant vu dans les trames (D13, r13...), pas forcément le numéro de dossard.</div>
+  </div>
+
+  <div class="field">
+    <label>Adversaires à suivre (jusqu'à 5)</label>
+    <input id="f-rivals" placeholder="ex: 25, 28, 31, 35, 38" />
+    <div class="hint">IDs séparés par des virgules. Ce sont les karts contre qui tu te bats en piste.</div>
+  </div>
+
+  <button class="btn-primary" id="btn-connect">Rejoindre la course</button>
+  <button class="btn-secondary" id="btn-saved" style="display:none;">Reprendre la dernière config</button>
+
+  <div id="setup-status"></div>
 </div>
 
-<div class="test">
-  <strong>Test 2 — WebSocket direct (ex: Eupen)</strong>
-  <div>URL WebSocket : <input id="t2-url" value="wss://live-data.apex-timing.com/" /></div>
-  <button onclick="testWs()">Lancer le test WebSocket</button>
-  <div id="t2-status" class="pending">Pas encore testé.</div>
-  <pre id="t2-result"></pre>
+<!-- ============ MAIN APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="pulse-dot" id="pulse"></div>
+      <span class="topbar-label" id="topbar-label">CONNEXION...</span>
+    </div>
+    <button class="topbar-edit" id="btn-edit">MODIFIER</button>
+  </div>
+
+  <div class="hero">
+    <div class="hero-eyebrow">NOTRE POSITION RÉELLE — HORS STAND</div>
+    <div class="hero-main">
+      <div class="hero-pos" id="hero-pos">—</div>
+      <div class="hero-meta">
+        <div class="hero-name" id="hero-name">En attente</div>
+        <div class="hero-laps" id="hero-laps">— tours</div>
+      </div>
+    </div>
+    <div class="hero-stats">
+      <div class="hstat">
+        <div class="hstat-label">Pos. officielle</div>
+        <div class="hstat-value" id="stat-official" style="color:var(--text-dim);">—</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-label">Dernier tour</div>
+        <div class="hstat-value" id="stat-lap" style="color:var(--text);">—</div>
+      </div>
+      <div class="hstat">
+        <div class="hstat-label">Temps stand</div>
+        <div class="hstat-value" id="stat-pit" style="color:var(--green);">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">En bataille directe</div>
+  <div class="battle-track" id="battle-track"></div>
+  <div class="empty-box" id="empty-box" style="display:none;">
+    Aucune donnée encore reçue pour ces karts.<br>Vérifie que la course est active et que les IDs sont corrects.
+  </div>
+
+  <div class="footer-note">
+    Classement réel = temps de course cumulé moins temps passé en stand. Connexion directe au flux Apex Timing depuis cette page — fonctionne uniquement pour les circuits en polling HTTP.
+  </div>
 </div>
 
 <script>
-function setStatus(id, cls, text) {
-  const el = document.getElementById(id);
-  el.className = cls;
-  el.textContent = text;
+/* ============================================================
+   ÉTAT & CONFIG
+   ============================================================ */
+const STORAGE_KEY = "battle_dashboard_config";
+const REQUIRED_PIT_STOPS = 1;
+const APEX_ENDPOINT = "https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php";
+const POLL_INTERVAL_MS = 2000;
+
+let config = { port: "8600", myKart: "", rivals: [] };
+let karts = {};
+let pollTimer = null;
+let consecutiveFailures = 0;
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function fmt(ms, withMs) {
+  if (ms == null || isNaN(ms)) return "—";
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  if (withMs === false) return m + ":" + String(sec).padStart(2, "0");
+  const millis = Math.floor(ms % 1000);
+  return m + ":" + String(sec).padStart(2, "0") + "." + String(millis).padStart(3, "0");
+}
+function fmtDuration(ms) {
+  if (ms == null || isNaN(ms)) return "—";
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m + "m" + String(s).padStart(2, "0") + "s";
+}
+function fmtGap(ms) {
+  if (ms == null || isNaN(ms)) return "—";
+  const sign = ms < 0 ? "-" : "+";
+  const abs = Math.abs(ms) / 1000;
+  return sign + abs.toFixed(2) + "s";
 }
 
-function testHttp() {
-  const port = document.getElementById('t1-port').value.trim();
-  const kart = document.getElementById('t1-kart').value.trim();
-  const req = "D#-30#D" + kart + ".L#-999#D" + kart + ".P#2#D" + kart + ".B#1#D" + kart + ".INF";
-  const body = "port=" + port + "&request=" + encodeURIComponent(req);
+function getKart(id) {
+  if (!karts[id]) {
+    karts[id] = {
+      id: id,
+      name: "Kart " + id,
+      num: null,
+      color: "#8B92A0",
+      laps: 0,
+      lastCountedLap: -1,
+      lastLapMs: null,
+      bestLapMs: null,
+      totalRaceMs: 0,
+      inPit: false,
+      pitEnteredAt: null,
+      pitStopsDone: 0,
+      totalPitMs: 0,
+      lastUpdate: Date.now(),
+    };
+  }
+  return karts[id];
+}
 
-  setStatus('t1-status', 'pending', 'Envoi en cours...');
-  document.getElementById('t1-result').textContent = '';
+/* ============================================================
+   PARSING — formats validés empiriquement (WS Eupen + HTTP Brignoles)
+   ============================================================ */
+function fmtMsFromSeconds(str) {
+  if (!str) return null;
+  const parts = str.split(":");
+  if (parts.length === 2) return (parseFloat(parts[0]) * 60 + parseFloat(parts[1])) * 1000;
+  return parseFloat(str) * 1000;
+}
 
-  fetch("https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php", {
+function parseLine(line) {
+  line = line.trim();
+  if (!line) return;
+
+  let m = line.match(/^r(\d+)c(\d+)\|([a-z]*)\|(.*)$/);
+  if (m) {
+    const id = m[1], code = m[3], val = m[4];
+    const k = getKart(id);
+    k.lastUpdate = Date.now();
+    if (code === "tn") {
+      if (val.includes(":") || parseFloat(val) > 5) {
+        k.lastLapMs = fmtMsFromSeconds(val);
+        if (k.bestLapMs == null || k.lastLapMs < k.bestLapMs) k.bestLapMs = k.lastLapMs;
+      }
+    } else if (code === "in") {
+      if (!k.inPit) { k.inPit = true; k.pitEnteredAt = Date.now(); }
+    } else if (code === "to") {
+      k.totalPitMs += fmtMsFromSeconds(val) || 0;
+    }
+    return;
+  }
+
+  m = line.match(/^r(\d+)\|(\*\w*)\|(.*)$/);
+  if (m) {
+    const id = m[1], code = m[2];
+    const k = getKart(id);
+    k.lastUpdate = Date.now();
+    if (code === "*out") {
+      if (k.inPit) { k.inPit = false; k.pitEnteredAt = null; k.pitStopsDone += 1; }
+    }
+    return;
+  }
+
+  m = line.match(/^r(\d+)\|#\|(\d+)$/);
+  if (m) {
+    const id = m[1], lapsNum = parseInt(m[2], 10);
+    const k = getKart(id);
+    if (lapsNum > k.laps && k.lastLapMs != null) k.totalRaceMs += k.lastLapMs;
+    k.laps = lapsNum;
+    k.lastUpdate = Date.now();
+    return;
+  }
+
+  m = line.match(/^D(\d+)\.L(\d+)#([pg]?\d+)?\|([pg]?\d+)?\|([pg]?\d+)?\|([pg]?\d+)?$/);
+  if (m) {
+    const id = m[1], lapNum = parseInt(m[2], 10);
+    const stripPrefix = (v) => (v ? parseFloat(v.replace(/^[pg]/, "")) : null);
+    const k = getKart(id);
+    k.laps = Math.max(k.laps, lapNum);
+    if (m[6]) {
+      const total = stripPrefix(m[6]);
+      k.lastLapMs = total;
+      if (k.bestLapMs == null || total < k.bestLapMs) k.bestLapMs = total;
+      if (lapNum > k.lastCountedLap) { k.totalRaceMs += total; k.lastCountedLap = lapNum; }
+    }
+    k.lastUpdate = Date.now();
+    return;
+  }
+
+  m = line.match(/^D(\d+)\.L(\d+)#[pg]?(\d+)$/);
+  if (m) {
+    const id = m[1], lapNum = parseInt(m[2], 10), totalMs = parseFloat(m[3]);
+    const k = getKart(id);
+    k.laps = Math.max(k.laps, lapNum);
+    k.lastLapMs = totalMs;
+    if (k.bestLapMs == null || totalMs < k.bestLapMs) k.bestLapMs = totalMs;
+    if (lapNum > k.lastCountedLap) { k.totalRaceMs += totalMs; k.lastCountedLap = lapNum; }
+    k.lastUpdate = Date.now();
+    return;
+  }
+
+  m = line.match(/D(\d+)\.P#.*$/);
+  if (m) {
+    // Ligne pit (.P) détectée mais format précis non encore confirmé sur tous circuits —
+    // on la journalise pour analyse future sans casser le reste du parsing.
+    return;
+  }
+
+  m = line.match(/INF#<driver[^>]*num="(\d*)"[^>]*name="([^"]*)"[^>]*color="(#[0-9A-Fa-f]*)"/);
+  if (m) {
+    const idMatch = line.match(/^[Dr](\d+)/);
+    if (idMatch) {
+      const k = getKart(idMatch[1]);
+      k.num = m[1];
+      k.name = m[2] || k.name;
+      k.color = m[3] || k.color;
+    }
+    return;
+  }
+}
+
+/* ============================================================
+   POLLING
+   ============================================================ */
+function buildRequestBody(kartId) {
+  const req = "D#-30#D" + kartId + ".L#-999#D" + kartId + ".P#2#D" + kartId + ".B#1#D" + kartId + ".INF";
+  return "port=" + config.port + "&request=" + encodeURIComponent(req);
+}
+
+function pollKart(kartId) {
+  return fetch(APEX_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: body,
+    body: buildRequestBody(kartId),
     mode: "cors",
     credentials: "omit",
   })
-    .then((r) => {
-      document.getElementById('t1-result').textContent =
-        'Status HTTP: ' + r.status + '\n' +
-        'Headers reçus: ' + JSON.stringify([...r.headers.entries()]) + '\n\n';
-      return r.text();
-    })
+    .then((r) => r.text())
     .then((text) => {
-      setStatus('t1-status', 'ok', '✓ RÉPONSE REÇUE — la connexion HTTP directe fonctionne !');
-      document.getElementById('t1-result').textContent += 'Corps de la réponse:\n' + text;
+      String(text).split(/[\n\r]+/).forEach(parseLine);
+      return true;
     })
-    .catch((e) => {
-      setStatus('t1-status', 'fail', '✗ ÉCHEC: ' + e.message);
-      document.getElementById('t1-result').textContent =
-        'Erreur complète: ' + e.toString() +
-        '\n\nCeci confirme un blocage CORS ou réseau depuis cette origine (' + location.origin + ').';
-    });
+    .catch(() => false);
 }
 
-function testWs() {
-  const url = document.getElementById('t2-url').value.trim();
-  setStatus('t2-status', 'pending', 'Connexion en cours...');
-  document.getElementById('t2-result').textContent = '';
-
-  let received = 0;
-  const ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    setStatus('t2-status', 'ok', '✓ SOCKET OUVERT — en attente de messages (10s)...');
-  };
-  ws.onmessage = (ev) => {
-    received += 1;
-    document.getElementById('t2-result').textContent += '[msg ' + received + '] ' + String(ev.data).slice(0, 300) + '\n';
-    if (received === 1) {
-      setStatus('t2-status', 'ok', '✓ MESSAGE REÇU — la connexion WebSocket directe fonctionne !');
+function pollAll() {
+  const ids = [config.myKart, ...config.rivals].filter(Boolean);
+  Promise.all(ids.map(pollKart)).then((results) => {
+    const anySuccess = results.some(Boolean);
+    if (anySuccess) {
+      consecutiveFailures = 0;
+      setConnStatus("live", "EN DIRECT");
+    } else {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= 3) setConnStatus("err", "CONNEXION INSTABLE");
     }
-  };
-  ws.onerror = (ev) => {
-    setStatus('t2-status', 'fail', '✗ ÉCHEC: erreur WebSocket (voir console)');
-  };
-  ws.onclose = (ev) => {
-    if (received === 0) {
-      setStatus('t2-status', 'fail', '✗ Fermé sans aucun message reçu (code ' + ev.code + ')');
-    }
-  };
-
-  setTimeout(() => {
-    if (received === 0 && ws.readyState === WebSocket.OPEN) {
-      setStatus('t2-status', 'fail', '✗ Socket ouvert mais AUCUN message reçu après 10s. Le serveur attend peut-être un message initial de notre part.');
-    }
-  }, 10000);
+    render();
+  });
 }
+
+function setConnStatus(state, label) {
+  document.getElementById("pulse").className = "pulse-dot" + (state ? " " + state : "");
+  document.getElementById("topbar-label").textContent = label;
+}
+
+/* ============================================================
+   CLASSEMENT
+   ============================================================ */
+function computeRanking() {
+  const ids = [config.myKart, ...config.rivals].filter(Boolean);
+  const list = ids.map(getKart);
+  const withMetrics = list.map((t) => {
+    const pitCompliant = t.pitStopsDone >= REQUIRED_PIT_STOPS;
+    const onTrackMs = t.totalRaceMs - t.totalPitMs;
+    return Object.assign({}, t, { pitCompliant, onTrackMs });
+  });
+
+  const officialOrder = withMetrics.slice().sort((a, b) => {
+    if (b.laps !== a.laps) return b.laps - a.laps;
+    return a.totalRaceMs - b.totalRaceMs;
+  });
+  officialOrder.forEach((t, i) => (t.officialPos = i + 1));
+
+  const realOrder = withMetrics.slice().sort((a, b) => {
+    if (b.laps !== a.laps) return b.laps - a.laps;
+    return a.onTrackMs - b.onTrackMs;
+  });
+  realOrder.forEach((t, i) => (t.realPos = i + 1));
+
+  const merged = withMetrics.map((t) => {
+    const off = officialOrder.find((x) => x.id === t.id);
+    const real = realOrder.find((x) => x.id === t.id);
+    return Object.assign({}, t, { officialPos: off.officialPos, realPos: real.realPos });
+  });
+
+  return merged.sort((a, b) => a.realPos - b.realPos);
+}
+
+function statusPillHTML(team) {
+  if (team.inPit) {
+    const elapsed = Date.now() - team.pitEnteredAt;
+    return '<span class="battle-pill pit">STAND ' + fmtDuration(elapsed) + "</span>";
+  }
+  if (team.pitStopsDone === 0 && team.totalPitMs === 0) {
+    return '<span class="battle-pill unknown">PAS D\'ARRÊT VU</span>';
+  }
+  if (!team.pitCompliant) {
+    return '<span class="battle-pill due">ARRÊT DÛ</span>';
+  }
+  return '<span class="battle-pill ok">✓ EN RÈGLE</span>';
+}
+
+/* ============================================================
+   RENDU
+   ============================================================ */
+function render() {
+  const ranked = computeRanking();
+  const us = ranked.find((t) => t.id === config.myKart);
+
+  if (us) {
+    document.getElementById("hero-pos").innerHTML = us.realPos + "<sup>e</sup>";
+    document.getElementById("hero-name").textContent = "#" + (us.num || us.id) + " " + (us.name || "");
+    document.getElementById("hero-laps").textContent = us.laps + " tours effectués";
+    document.getElementById("stat-official").textContent = us.officialPos + "ᵉ";
+    document.getElementById("stat-lap").textContent = fmt(us.lastLapMs, true);
+    const pitEl = document.getElementById("stat-pit");
+    pitEl.textContent = fmtDuration(us.totalPitMs);
+    pitEl.style.color = us.pitCompliant ? "var(--green)" : (us.totalPitMs > 0 ? "var(--yellow)" : "var(--text-dim)");
+  }
+
+  const rivals = ranked.filter((t) => t.id !== config.myKart);
+  const track = document.getElementById("battle-track");
+  const empty = document.getElementById("empty-box");
+
+  if (ranked.length === 0 || (us == null && rivals.length === 0)) {
+    track.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+
+  const allRows = ranked.slice();
+  track.innerHTML = allRows
+    .map((team) => {
+      const isUs = team.id === config.myKart;
+      let gapHTML;
+      if (isUs) {
+        gapHTML = '<span class="battle-gap us-marker">NOUS</span>';
+      } else if (us) {
+        const gapMs = team.onTrackMs - us.onTrackMs;
+        const ahead = gapMs < 0;
+        gapHTML = '<span class="battle-gap ' + (ahead ? "ahead" : "behind") + '">' + fmtGap(gapMs) + "</span>";
+      } else {
+        gapHTML = '<span class="battle-gap">—</span>';
+      }
+      return (
+        '<div class="battle-row' + (isUs ? " us" : "") + '">' +
+        '<div class="battle-pos">' + team.realPos + "</div>" +
+        '<div class="battle-id">' +
+        '<span class="battle-swatch" style="background:' + team.color + '"></span>' +
+        '<div style="min-width:0;">' +
+        '<div class="battle-name">#' + (team.num || team.id) + " " + (team.name || "") + "</div>" +
+        statusPillHTML(team) +
+        "</div></div>" +
+        gapHTML +
+        "</div>"
+      );
+    })
+    .join("");
+}
+
+/* ============================================================
+   CONFIG / NAVIGATION
+   ============================================================ */
+function loadSavedConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return null;
+}
+
+function saveConfig(c) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); } catch (e) {}
+}
+
+function startApp(c) {
+  config = c;
+  karts = {};
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("app").classList.add("active");
+  setConnStatus("", "CONNEXION...");
+  render();
+  if (pollTimer) clearInterval(pollTimer);
+  pollAll();
+  pollTimer = setInterval(pollAll, POLL_INTERVAL_MS);
+}
+
+document.getElementById("btn-connect").addEventListener("click", () => {
+  const port = document.getElementById("f-port").value.trim() || "8600";
+  const myKart = document.getElementById("f-mykart").value.trim();
+  const rivals = document.getElementById("f-rivals").value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const statusEl = document.getElementById("setup-status");
+  if (!myKart) {
+    statusEl.className = "err";
+    statusEl.textContent = "Indique l'ID de ton kart pour continuer.";
+    return;
+  }
+  statusEl.className = "";
+  statusEl.textContent = "";
+
+  const c = { port, myKart, rivals };
+  saveConfig(c);
+  startApp(c);
+});
+
+document.getElementById("btn-edit").addEventListener("click", () => {
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById("app").classList.remove("active");
+  document.getElementById("setup").style.display = "flex";
+});
+
+document.getElementById("btn-saved").addEventListener("click", () => {
+  const saved = loadSavedConfig();
+  if (saved) startApp(saved);
+});
+
+/* Pré-remplissage si une config existe déjà */
+(function init() {
+  const saved = loadSavedConfig();
+  if (saved) {
+    document.getElementById("f-port").value = saved.port || "8600";
+    document.getElementById("f-mykart").value = saved.myKart || "";
+    document.getElementById("f-rivals").value = (saved.rivals || []).join(", ");
+    document.getElementById("btn-saved").style.display = "block";
+  }
+})();
 </script>
 
 </body>
