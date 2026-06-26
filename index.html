@@ -511,6 +511,7 @@
 
   <button class="btn-primary" id="btn-connect">Rejoindre la course</button>
   <button class="btn-secondary" id="btn-saved" style="display:none;">Reprendre la dernière config</button>
+  <button class="btn-secondary" id="btn-calibrate">Calibrer pendant les essais (sans suivre de course)</button>
 
   <div id="setup-status"></div>
 </div>
@@ -598,10 +599,12 @@ const STORAGE_KEY = "battle_dashboard_config";
 const REQUIRED_PIT_STOPS = 1;
 const APEX_ENDPOINT = "https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php";
 const POLL_INTERVAL_MS = 2000;
+const POLL_INTERVAL_FAST_MS = 250; // utilisé uniquement pour notre kart quand il est détecté au stand
 
-let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [], pitTargetMs: 120000 };
+let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [], pitTargetMs: 120000, calibrated: false, pitCorrectionMs: 0 };
 let karts = {};
 let pollTimer = null;
+let fastPollTimer = null;
 let pitClockTimer = null;
 let consecutiveFailures = 0;
 let pitMode = { active: false, released: false, releasedAt: null, history: [] };
@@ -977,6 +980,17 @@ function render() {
 /* ============================================================
    MODE STAND — détection automatique + chrono + relâche
    ============================================================ */
+function startFastPolling() {
+  if (fastPollTimer) clearInterval(fastPollTimer);
+  fastPollTimer = setInterval(() => {
+    pollKart(config.myKart).then(() => render());
+  }, POLL_INTERVAL_FAST_MS);
+}
+
+function stopFastPolling() {
+  if (fastPollTimer) { clearInterval(fastPollTimer); fastPollTimer = null; }
+}
+
 function checkPitTransition(us) {
   if (!us) return;
   // Transition false -> true : notre kart vient d'entrer au stand.
@@ -999,8 +1013,12 @@ function checkPitTransition(us) {
 const PIT_RISKY_MS = 500;  // jusqu'à +0.5s : zone risquée
 const PIT_IDEAL_MS = 1000; // jusqu'à +1.0s : fin de la zone idéale
 
+function effectiveTargetMs() {
+  return config.pitTargetMs + (config.pitCorrectionMs || 0);
+}
+
 function pitZoneFor(elapsedMs) {
-  const delta = elapsedMs - config.pitTargetMs;
+  const delta = elapsedMs - effectiveTargetMs();
   if (delta < 0) return "under";
   if (delta < PIT_RISKY_MS) return "risky";
   if (delta < PIT_IDEAL_MS) return "ideal";
@@ -1018,11 +1036,13 @@ function pitZoneLabel(zone) {
 
 function enterPitMode(us) {
   pitMode = { active: true, released: false, releasedAt: null, history: pitMode.history };
+  startFastPolling();
   document.getElementById("pitmode").className = "active";
   document.getElementById("pit-eyebrow").textContent = "NOTRE KART EST AU STAND";
   document.getElementById("pit-eyebrow").className = "pit-eyebrow";
   document.getElementById("pit-target").textContent =
-    "Cible : " + fmt(config.pitTargetMs + PIT_RISKY_MS, false) + " – " + fmt(config.pitTargetMs + PIT_IDEAL_MS, false);
+    "Cible : " + fmt(effectiveTargetMs() + PIT_RISKY_MS, false) + " – " + fmt(effectiveTargetMs() + PIT_IDEAL_MS, false) +
+    (config.calibrated ? "" : " (non calibré)");
   document.getElementById("btn-release").style.display = "block";
   document.getElementById("pit-result").style.display = "none";
   document.getElementById("btn-continue").style.display = "none";
@@ -1036,7 +1056,7 @@ function enterPitMode(us) {
 function buildZonebarGradient() {
   // La barre ne représente PAS tout le temps écoulé depuis 0 (le rouge écraserait tout) :
   // elle se concentre sur la zone qui compte, de (minimum - PRE_MS) à (minimum + IDEAL_MS + POST_MS).
-  const target = config.pitTargetMs;
+  const target = effectiveTargetMs();
   const PRE_MS = 3000;  // 3s avant le minimum, visibles en rouge
   const POST_MS = 3000; // 3s après la zone idéale, visibles en jaune
   const windowStart = target - PRE_MS;
@@ -1067,7 +1087,7 @@ function updatePitClock(enteredAt) {
 
 function updatePitColors(elapsed) {
   const zone = pitZoneFor(elapsed);
-  const delta = elapsed - config.pitTargetMs;
+  const delta = elapsed - effectiveTargetMs();
 
   document.getElementById("pit-clock").className = "pit-clock " + zone;
   document.getElementById("pit-delta").className = "pit-delta " + zone;
@@ -1088,6 +1108,7 @@ function exitPitModeSilently() {
   // La sortie a été détectée par Apex sans qu'on ait cliqué "Relâcher" —
   // on referme proprement sans afficher de résultat (donnée incomplète).
   if (pitClockTimer) clearInterval(pitClockTimer);
+  stopFastPolling();
   document.getElementById("pitmode").className = "";
   pitMode = { active: false, released: false, releasedAt: null, history: pitMode.history };
 }
@@ -1096,16 +1117,38 @@ document.getElementById("btn-release").addEventListener("click", () => {
   const us = getKart(config.myKart);
   if (!us.pitEnteredAt) return;
   const actualMs = Date.now() - us.pitEnteredAt;
-  const deltaMs = actualMs - config.pitTargetMs;
+  const deltaMs = actualMs - effectiveTargetMs();
   const zone = pitZoneFor(actualMs);
   const zoneColor = { under: "var(--red)", risky: "#E8A23A", ideal: "var(--green)", over: "var(--yellow)" }[zone];
 
+  if (config.isCalibrationSession) {
+    // Mode calibrage : on enregistre l'écart mesuré par Apex par rapport au
+    // temps minimum théorique saisi, comme correction permanente pour la course.
+    // On ne déduit volontairement aucune correction du résultat lui-même ici :
+    // l'utilisateur calibre en visant délibérément pile le minimum pendant les essais,
+    // donc actualMs - pitTargetMs EST la correction à appliquer.
+    config.pitCorrectionMs = actualMs - config.pitTargetMs;
+    config.calibrated = true;
+    saveConfig(config);
+  } else {
+    pitMode.history.push({ actualMs, deltaMs, zone, at: Date.now() });
+    // Auto-ajustement : si on n'a jamais calibré, chaque arrêt réel en course
+    // affine la correction pour les arrêts suivants, en se basant sur l'écart
+    // entre le temps minimum théorique et ce qu'Apex a réellement validé comme stop conforme.
+    if (!config.calibrated && zone !== "under") {
+      // On ne corrige que si l'arrêt était valide (pas une pénalité) : un arrêt
+      // sous le minimum ne nous dit rien d'utilisable sur le minimum réel.
+      config.pitCorrectionMs = actualMs - config.pitTargetMs - PIT_RISKY_MS; // recale pour viser le bas de la zone risky au prochain coup
+      config.calibrated = true; // on considère désormais calibré par l'observation réelle
+      saveConfig(config);
+    }
+  }
+
   pitMode.released = true;
   pitMode.releasedAt = Date.now();
-  pitMode.history.push({ actualMs, deltaMs, zone, at: Date.now() });
   if (pitClockTimer) clearInterval(pitClockTimer);
 
-  document.getElementById("pit-eyebrow").textContent = "PILOTE RELÂCHÉ";
+  document.getElementById("pit-eyebrow").textContent = config.isCalibrationSession ? "CALIBRAGE ENREGISTRÉ" : "PILOTE RELÂCHÉ";
   document.getElementById("pit-eyebrow").className = "pit-eyebrow released";
   document.getElementById("pitmode").className = "active released";
   document.getElementById("btn-release").style.display = "none";
@@ -1113,7 +1156,7 @@ document.getElementById("btn-release").addEventListener("click", () => {
 
   document.getElementById("result-actual").textContent = fmt(actualMs, true);
   document.getElementById("result-target").textContent =
-    fmt(config.pitTargetMs + PIT_RISKY_MS, false) + " – " + fmt(config.pitTargetMs + PIT_IDEAL_MS, false);
+    fmt(effectiveTargetMs() + PIT_RISKY_MS, false) + " – " + fmt(effectiveTargetMs() + PIT_IDEAL_MS, false);
   const deltaEl = document.getElementById("result-delta");
   const sign = deltaMs < 0 ? "−" : "+";
   deltaEl.textContent = sign + (Math.abs(deltaMs) / 1000).toFixed(2) + "s (" + pitZoneLabel(zone) + ")";
@@ -1128,6 +1171,7 @@ document.getElementById("btn-release").addEventListener("click", () => {
 document.getElementById("btn-continue").addEventListener("click", () => {
   document.getElementById("pitmode").className = "";
   pitMode.active = false;
+  stopFastPolling();
 });
 
 function renderPitHistory() {
@@ -1153,7 +1197,9 @@ function loadSavedConfig() {
 }
 
 function saveConfig(c) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(c)); } catch (e) {}
+  const toSave = Object.assign({}, c);
+  delete toSave.isCalibrationSession; // ce flag ne concerne qu'une session en cours, jamais la config persistée
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave)); } catch (e) {}
 }
 
 function startApp(c) {
@@ -1206,6 +1252,27 @@ document.getElementById("btn-edit").addEventListener("click", () => {
 document.getElementById("btn-saved").addEventListener("click", () => {
   const saved = loadSavedConfig();
   if (saved) startApp(saved);
+});
+
+document.getElementById("btn-calibrate").addEventListener("click", () => {
+  const port = document.getElementById("f-port").value.trim() || "8600";
+  const myTeamName = document.getElementById("f-myteam").value.trim();
+  const pitMin = parseInt(document.getElementById("f-pit-min").value.trim() || "2", 10);
+  const pitSec = parseInt(document.getElementById("f-pit-sec").value.trim() || "0", 10);
+  const pitTargetMs = (pitMin * 60 + pitSec) * 1000;
+
+  const statusEl = document.getElementById("setup-status");
+  if (!myTeamName) {
+    statusEl.className = "err";
+    statusEl.textContent = "Indique le nom de ton équipe avant de calibrer.";
+    return;
+  }
+  statusEl.className = "";
+  statusEl.textContent = "";
+
+  const c = { port, myTeamName, myKart: null, rivals: [], pitTargetMs, calibrated: false, pitCorrectionMs: 0 };
+  saveConfig(c);
+  startApp(Object.assign({}, c, { isCalibrationSession: true }));
 });
 
 /* Pré-remplissage si une config existe déjà */
