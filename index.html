@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test connexion Apex Timing</title>
+<style>
+  body { background:#0B0D10; color:#E8E6E0; font-family: monospace; padding: 16px; font-size: 14px; }
+  h1 { font-size: 16px; margin-bottom: 16px; }
+  .test { margin-bottom: 16px; padding: 12px; border: 1px solid #262B33; border-radius: 6px; }
+  .pending { color: #8B92A0; }
+  .ok { color: #3FA66B; font-weight: bold; }
+  .fail { color: #D64545; font-weight: bold; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #8B92A0; margin-top: 8px; }
+  input { width: 100%; background:#181C22; border:1px solid #262B33; color:#E8E6E0; padding:8px; margin-bottom:8px; font-family:monospace; }
+  button { background:#F4C430; color:#1a1400; border:none; padding:8px 16px; font-weight:bold; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h1>Test de connexion directe à Apex Timing (depuis une page hébergée)</h1>
+
+<div class="test">
+  <strong>Test 1 — HTTP polling (request.php, ex: Brignoles)</strong>
+  <div>Port : <input id="t1-port" value="8600" /></div>
+  <div>Kart ID : <input id="t1-kart" value="13" /></div>
+  <button onclick="testHttp()">Lancer le test HTTP</button>
+  <div id="t1-status" class="pending">Pas encore testé.</div>
+  <pre id="t1-result"></pre>
+</div>
+
+<div class="test">
+  <strong>Test 2 — WebSocket direct (ex: Eupen)</strong>
+  <div>URL WebSocket : <input id="t2-url" value="wss://live-data.apex-timing.com/" /></div>
+  <button onclick="testWs()">Lancer le test WebSocket</button>
+  <div id="t2-status" class="pending">Pas encore testé.</div>
+  <pre id="t2-result"></pre>
+</div>
+
+<script>
+function setStatus(id, cls, text) {
+  const el = document.getElementById(id);
+  el.className = cls;
+  el.textContent = text;
+}
+
+function testHttp() {
+  const port = document.getElementById('t1-port').value.trim();
+  const kart = document.getElementById('t1-kart').value.trim();
+  const req = "D#-30#D" + kart + ".L#-999#D" + kart + ".P#2#D" + kart + ".B#1#D" + kart + ".INF";
+  const body = "port=" + port + "&request=" + encodeURIComponent(req);
+
+  setStatus('t1-status', 'pending', 'Envoi en cours...');
+  document.getElementById('t1-result').textContent = '';
+
+  fetch("https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: body,
+    mode: "cors",
+    credentials: "omit",
+  })
+    .then((r) => {
+      document.getElementById('t1-result').textContent =
+        'Status HTTP: ' + r.status + '\n' +
+        'Headers reçus: ' + JSON.stringify([...r.headers.entries()]) + '\n\n';
+      return r.text();
+    })
+    .then((text) => {
+      setStatus('t1-status', 'ok', '✓ RÉPONSE REÇUE — la connexion HTTP directe fonctionne !');
+      document.getElementById('t1-result').textContent += 'Corps de la réponse:\n' + text;
+    })
+    .catch((e) => {
+      setStatus('t1-status', 'fail', '✗ ÉCHEC: ' + e.message);
+      document.getElementById('t1-result').textContent =
+        'Erreur complète: ' + e.toString() +
+        '\n\nCeci confirme un blocage CORS ou réseau depuis cette origine (' + location.origin + ').';
+    });
+}
+
+function testWs() {
+  const url = document.getElementById('t2-url').value.trim();
+  setStatus('t2-status', 'pending', 'Connexion en cours...');
+  document.getElementById('t2-result').textContent = '';
+
+  let received = 0;
+  const ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setStatus('t2-status', 'ok', '✓ SOCKET OUVERT — en attente de messages (10s)...');
+  };
+  ws.onmessage = (ev) => {
+    received += 1;
+    document.getElementById('t2-result').textContent += '[msg ' + received + '] ' + String(ev.data).slice(0, 300) + '\n';
+    if (received === 1) {
+      setStatus('t2-status', 'ok', '✓ MESSAGE REÇU — la connexion WebSocket directe fonctionne !');
+    }
+  };
+  ws.onerror = (ev) => {
+    setStatus('t2-status', 'fail', '✗ ÉCHEC: erreur WebSocket (voir console)');
+  };
+  ws.onclose = (ev) => {
+    if (received === 0) {
+      setStatus('t2-status', 'fail', '✗ Fermé sans aucun message reçu (code ' + ev.code + ')');
+    }
+  };
+
+  setTimeout(() => {
+    if (received === 0 && ws.readyState === WebSocket.OPEN) {
+      setStatus('t2-status', 'fail', '✗ Socket ouvert mais AUCUN message reçu après 10s. Le serveur attend peut-être un message initial de notre part.');
+    }
+  }, 10000);
+}
+</script>
+
+</body>
+</html>
