@@ -328,9 +328,9 @@
   </div>
 
   <div class="field">
-    <label>Mon kart — ID interne</label>
-    <input id="f-mykart" inputmode="numeric" placeholder="ex: 13" />
-    <div class="hint">L'identifiant vu dans les trames (D13, r13...), pas forcément le numéro de dossard.</div>
+    <label>Nom de notre équipe</label>
+    <input id="f-myteam" placeholder="ex: ARTEAM" value="ARTEAM" />
+    <div class="hint">Recherche automatique et tolérante aux variantes (arteam, AR TEAM, ARTeam...).</div>
   </div>
 
   <div class="field">
@@ -400,9 +400,10 @@ const REQUIRED_PIT_STOPS = 1;
 const APEX_ENDPOINT = "https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php";
 const POLL_INTERVAL_MS = 2000;
 
-let config = { port: "8600", myKart: "", rivals: [] };
+let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [] };
 let karts = {};
 let pollTimer = null;
+let discoveryTimer = null;
 let consecutiveFailures = 0;
 
 /* ============================================================
@@ -429,6 +430,12 @@ function fmtGap(ms) {
   const sign = ms < 0 ? "-" : "+";
   const abs = Math.abs(ms) / 1000;
   return sign + abs.toFixed(2) + "s";
+}
+
+function normalizeTeamName(str) {
+  return String(str || "")
+    .toUpperCase()
+    .replace(/[\s\-_]+/g, ""); // retire espaces, tirets, underscores pour comparer "AR TEAM" / "AR-TEAM" / "ARTEAM"
 }
 
 function getKart(id) {
@@ -562,6 +569,13 @@ function buildRequestBody(kartId) {
   return "port=" + config.port + "&request=" + encodeURIComponent(req);
 }
 
+function buildDiscoveryBody() {
+  // Requête large, sans cibler un kart précis : on espère récupérer un lot
+  // d'événements généraux (dont des lignes INF) couvrant toute la grille.
+  // Hypothèse de travail à confirmer en conditions réelles.
+  return "port=" + config.port + "&request=" + encodeURIComponent("D#-100");
+}
+
 function pollKart(kartId) {
   return fetch(APEX_ENDPOINT, {
     method: "POST",
@@ -578,7 +592,45 @@ function pollKart(kartId) {
     .catch(() => false);
 }
 
+function pollDiscovery() {
+  return fetch(APEX_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: buildDiscoveryBody(),
+    mode: "cors",
+    credentials: "omit",
+  })
+    .then((r) => r.text())
+    .then((text) => {
+      String(text).split(/[\n\r]+/).forEach(parseLine);
+      return true;
+    })
+    .catch(() => false);
+}
+
+function findKartByTeamName(teamName) {
+  const target = normalizeTeamName(teamName);
+  if (!target) return null;
+  return Object.values(karts).find((k) => k.name && normalizeTeamName(k.name).includes(target));
+}
+
 function pollAll() {
+  // Phase 1 : tant qu'on n'a pas résolu notre kart via le nom d'équipe, on scanne.
+  if (!config.myKart) {
+    setConnStatus("", "RECHERCHE DE " + config.myTeamName.toUpperCase() + "...");
+    pollDiscovery().then(() => {
+      const found = findKartByTeamName(config.myTeamName);
+      if (found) {
+        config.myKart = found.id;
+        saveConfig(config);
+        setConnStatus("live", "ÉQUIPE TROUVÉE");
+      }
+      render();
+    });
+    return;
+  }
+
+  // Phase 2 : suivi normal de notre kart + adversaires.
   const ids = [config.myKart, ...config.rivals].filter(Boolean);
   Promise.all(ids.map(pollKart)).then((results) => {
     const anySuccess = results.some(Boolean);
@@ -649,6 +701,20 @@ function statusPillHTML(team) {
    RENDU
    ============================================================ */
 function render() {
+  if (!config.myKart) {
+    document.getElementById("hero-pos").textContent = "?";
+    document.getElementById("hero-name").textContent = "Recherche de " + config.myTeamName + "...";
+    document.getElementById("hero-laps").textContent = "—";
+    document.getElementById("stat-official").textContent = "—";
+    document.getElementById("stat-lap").textContent = "—";
+    document.getElementById("stat-pit").textContent = "—";
+    document.getElementById("battle-track").innerHTML = "";
+    document.getElementById("empty-box").style.display = "block";
+    document.getElementById("empty-box").innerHTML =
+      "Recherche de l'équipe <strong>" + config.myTeamName + "</strong> dans la grille...<br>Ça peut prendre quelques secondes après le départ de la course.";
+    return;
+  }
+
   const ranked = computeRanking();
   const us = ranked.find((t) => t.id === config.myKart);
 
@@ -670,6 +736,7 @@ function render() {
   if (ranked.length === 0 || (us == null && rivals.length === 0)) {
     track.innerHTML = "";
     empty.style.display = "block";
+    empty.innerHTML = "Aucune donnée encore reçue pour ces karts.<br>Vérifie que la course est active et que les IDs sont corrects.";
     return;
   }
   empty.style.display = "none";
@@ -733,7 +800,7 @@ function startApp(c) {
 
 document.getElementById("btn-connect").addEventListener("click", () => {
   const port = document.getElementById("f-port").value.trim() || "8600";
-  const myKart = document.getElementById("f-mykart").value.trim();
+  const myTeamName = document.getElementById("f-myteam").value.trim();
   const rivals = document.getElementById("f-rivals").value
     .split(",")
     .map((s) => s.trim())
@@ -741,15 +808,15 @@ document.getElementById("btn-connect").addEventListener("click", () => {
     .slice(0, 5);
 
   const statusEl = document.getElementById("setup-status");
-  if (!myKart) {
+  if (!myTeamName) {
     statusEl.className = "err";
-    statusEl.textContent = "Indique l'ID de ton kart pour continuer.";
+    statusEl.textContent = "Indique le nom de ton équipe pour continuer.";
     return;
   }
   statusEl.className = "";
   statusEl.textContent = "";
 
-  const c = { port, myKart, rivals };
+  const c = { port, myTeamName, myKart: null, rivals };
   saveConfig(c);
   startApp(c);
 });
@@ -770,7 +837,7 @@ document.getElementById("btn-saved").addEventListener("click", () => {
   const saved = loadSavedConfig();
   if (saved) {
     document.getElementById("f-port").value = saved.port || "8600";
-    document.getElementById("f-mykart").value = saved.myKart || "";
+    document.getElementById("f-myteam").value = saved.myTeamName || "ARTEAM";
     document.getElementById("f-rivals").value = (saved.rivals || []).join(", ");
     document.getElementById("btn-saved").style.display = "block";
   }
