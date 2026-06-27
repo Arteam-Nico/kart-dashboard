@@ -220,6 +220,32 @@
   .hero-laps { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
   .hero-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 16px; }
+
+  .btn-anticipate {
+    width: 100%;
+    margin-top: 14px;
+    background: transparent;
+    border: 1.5px dashed var(--yellow-dim);
+    color: var(--yellow);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    padding: 13px;
+    border-radius: 10px;
+  }
+  .btn-anticipate:active { background: rgba(244,196,48,0.08); }
+  .btn-anticipate.armed {
+    border-style: solid;
+    border-color: var(--yellow);
+    background: rgba(244,196,48,0.10);
+  }
+  .anticipate-status {
+    margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--yellow);
+    text-align: center;
+  }
   .hstat { background: var(--bg-raised); border-radius: 8px; padding: 10px 12px; }
   .hstat-label { font-size: 9px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 5px; }
   .hstat-value { font-family: 'JetBrains Mono', monospace; font-size: 17px; font-weight: 700; }
@@ -502,11 +528,8 @@
 
   <div class="field">
     <label>Temps minimum imposé au stand</label>
-    <div class="row-2">
-      <input id="f-pit-min" inputmode="numeric" placeholder="min" value="2" />
-      <input id="f-pit-sec" inputmode="numeric" placeholder="sec" value="0" />
-    </div>
-    <div class="hint">Règlement de cette course précise — peut changer d'une épreuve à l'autre.</div>
+    <input id="f-pit-target" placeholder="ex: 2:24" value="2:00" />
+    <div class="hint">Format min:sec — règlement de cette course précise, peut changer d'une épreuve à l'autre.</div>
   </div>
 
   <button class="btn-primary" id="btn-connect">Rejoindre la course</button>
@@ -548,6 +571,11 @@
         <div class="hstat-label">Temps stand</div>
         <div class="hstat-value" id="stat-pit" style="color:var(--green);">—</div>
       </div>
+    </div>
+
+    <button class="btn-anticipate" id="btn-anticipate">PIT AU PROCHAIN TOUR</button>
+    <div class="anticipate-status" id="anticipate-status" style="display:none;">
+      ⚡ En attente de l'entrée stand — surveillance rapprochée active
     </div>
   </div>
 
@@ -609,6 +637,7 @@ let pitClockTimer = null;
 let consecutiveFailures = 0;
 let pitMode = { active: false, released: false, releasedAt: null, history: [] };
 let lastKnownPitState = false; // pour détecter la transition false->true sur NOTRE kart
+let anticipating = false;
 
 /* ============================================================
    UTILS
@@ -640,6 +669,27 @@ function normalizeTeamName(str) {
   return String(str || "")
     .toUpperCase()
     .replace(/[\s\-_]+/g, ""); // retire espaces, tirets, underscores pour comparer "AR TEAM" / "AR-TEAM" / "ARTEAM"
+}
+
+function parsePitTargetInput(str) {
+  // Accepte "2:24", "2:24.5", ou juste "144" (secondes pures) ; renvoie des millisecondes.
+  const s = String(str || "").trim();
+  if (!s) return 120000;
+  if (s.includes(":")) {
+    const [minPart, secPart] = s.split(":");
+    const min = parseFloat(minPart) || 0;
+    const sec = parseFloat(secPart) || 0;
+    return Math.round((min * 60 + sec) * 1000);
+  }
+  return Math.round((parseFloat(s) || 0) * 1000);
+}
+
+function formatMsAsChrono(ms) {
+  const totalSec = ms / 1000;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  const secStr = Number.isInteger(sec) ? String(sec).padStart(2, "0") : sec.toFixed(1).padStart(4, "0");
+  return min + ":" + secStr;
 }
 
 function getKart(id) {
@@ -991,6 +1041,41 @@ function stopFastPolling() {
   if (fastPollTimer) { clearInterval(fastPollTimer); fastPollTimer = null; }
 }
 
+const ANTICIPATION_TIMEOUT_MS = 5 * 60 * 1000; // sécurité : si pas d'entrée stand après 5min, on désarme automatiquement
+let anticipationTimeout = null;
+
+function toggleAnticipation() {
+  if (!config.myKart) return; // pas de kart résolu encore, rien à anticiper
+  anticipating = !anticipating;
+  const btn = document.getElementById("btn-anticipate");
+  const status = document.getElementById("anticipate-status");
+
+  if (anticipating) {
+    btn.className = "btn-anticipate armed";
+    btn.textContent = "ANNULER L'ANTICIPATION";
+    status.style.display = "block";
+    startFastPolling();
+    if (anticipationTimeout) clearTimeout(anticipationTimeout);
+    anticipationTimeout = setTimeout(() => {
+      if (anticipating && !pitMode.active) {
+        anticipating = false;
+        btn.className = "btn-anticipate";
+        btn.textContent = "PIT AU PROCHAIN TOUR";
+        status.style.display = "none";
+        stopFastPolling();
+      }
+    }, ANTICIPATION_TIMEOUT_MS);
+  } else {
+    btn.className = "btn-anticipate";
+    btn.textContent = "PIT AU PROCHAIN TOUR";
+    status.style.display = "none";
+    if (anticipationTimeout) clearTimeout(anticipationTimeout);
+    if (!pitMode.active) stopFastPolling(); // ne pas couper si on est déjà passé en vrai mode stand
+  }
+}
+
+document.getElementById("btn-anticipate").addEventListener("click", toggleAnticipation);
+
 function checkPitTransition(us) {
   if (!us) return;
   // Transition false -> true : notre kart vient d'entrer au stand.
@@ -1036,6 +1121,13 @@ function pitZoneLabel(zone) {
 
 function enterPitMode(us) {
   pitMode = { active: true, released: false, releasedAt: null, history: pitMode.history };
+  if (anticipating) {
+    anticipating = false;
+    document.getElementById("btn-anticipate").className = "btn-anticipate";
+    document.getElementById("btn-anticipate").textContent = "PIT AU PROCHAIN TOUR";
+    document.getElementById("anticipate-status").style.display = "none";
+    if (anticipationTimeout) clearTimeout(anticipationTimeout);
+  }
   startFastPolling();
   document.getElementById("pitmode").className = "active";
   document.getElementById("pit-eyebrow").textContent = "NOTRE KART EST AU STAND";
@@ -1225,9 +1317,7 @@ document.getElementById("btn-connect").addEventListener("click", () => {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 5);
-  const pitMin = parseInt(document.getElementById("f-pit-min").value.trim() || "2", 10);
-  const pitSec = parseInt(document.getElementById("f-pit-sec").value.trim() || "0", 10);
-  const pitTargetMs = (pitMin * 60 + pitSec) * 1000;
+  const pitTargetMs = parsePitTargetInput(document.getElementById("f-pit-target").value);
 
   const statusEl = document.getElementById("setup-status");
   if (!myTeamName) {
@@ -1257,9 +1347,7 @@ document.getElementById("btn-saved").addEventListener("click", () => {
 document.getElementById("btn-calibrate").addEventListener("click", () => {
   const port = document.getElementById("f-port").value.trim() || "8600";
   const myTeamName = document.getElementById("f-myteam").value.trim();
-  const pitMin = parseInt(document.getElementById("f-pit-min").value.trim() || "2", 10);
-  const pitSec = parseInt(document.getElementById("f-pit-sec").value.trim() || "0", 10);
-  const pitTargetMs = (pitMin * 60 + pitSec) * 1000;
+  const pitTargetMs = parsePitTargetInput(document.getElementById("f-pit-target").value);
 
   const statusEl = document.getElementById("setup-status");
   if (!myTeamName) {
@@ -1283,8 +1371,7 @@ document.getElementById("btn-calibrate").addEventListener("click", () => {
     document.getElementById("f-myteam").value = saved.myTeamName || "ARTEAM";
     document.getElementById("f-rivals").value = (saved.rivals || []).join(", ");
     const targetMs = saved.pitTargetMs || 120000;
-    document.getElementById("f-pit-min").value = Math.floor(targetMs / 60000);
-    document.getElementById("f-pit-sec").value = Math.round((targetMs % 60000) / 1000);
+    document.getElementById("f-pit-target").value = formatMsAsChrono(targetMs);
     document.getElementById("btn-saved").style.display = "block";
   }
 })();
