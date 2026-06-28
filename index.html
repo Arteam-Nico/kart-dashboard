@@ -628,10 +628,12 @@ const REQUIRED_PIT_STOPS = 1;
 const APEX_ENDPOINT = "https://live-data.apex-timing.com/live-timing/commonv2/functions/request.php";
 const POLL_INTERVAL_MS = 2000;
 const POLL_INTERVAL_FAST_MS = 250; // utilisé uniquement pour notre kart quand il est détecté au stand
+const PIT_HISTORY_INTERVAL_MS = 30000; // l'historique des arrêts change rarement, pas besoin de le réinterroger aussi souvent que les tours
 
 let config = { port: "8600", myTeamName: "ARTEAM", myKart: null, rivals: [], pitTargetMs: 120000, calibrated: false, pitCorrectionMs: 0 };
 let karts = {};
 let pollTimer = null;
+let pitHistoryTimer = null;
 let fastPollTimer = null;
 let pitClockTimer = null;
 let consecutiveFailures = 0;
@@ -740,9 +742,9 @@ function parseLine(line) {
       }
     } else if (code === "in") {
       if (!k.inPit) { k.inPit = true; k.pitEnteredAt = Date.now(); }
-    } else if (code === "to") {
-      k.totalPitMs += fmtMsFromSeconds(val) || 0;
     }
+    // (le cumul de temps de stand vient désormais exclusivement de fetchPitHistory(),
+    // basé sur l'historique complet et exact que le serveur calcule lui-même)
     return;
   }
 
@@ -795,10 +797,12 @@ function parseLine(line) {
     return;
   }
 
-  m = line.match(/D(\d+)\.P#.*$/);
+  m = line.match(/^D(\d+)\.P\d+#\d+\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|?/);
   if (m) {
-    // Ligne pit (.P) détectée mais format précis non encore confirmé sur tous circuits —
-    // on la journalise pour analyse future sans casser le reste du parsing.
+    // Format confirmé empiriquement : D<id>.P0X#<numPit>|<lap>|<inHour>|<outHour>|<pitTimeMs>|<trackTimeMs>|<relayLaps>|<driverId>|
+    // On ne fait rien ici : ces lignes arrivent aussi via fetchPitHistory(), qui lui
+    // recalcule le total exact depuis le début de course (plus fiable que d'accumuler
+    // au fil de ce flux, qui peut manquer des arrêts antérieurs à notre connexion).
     return;
   }
 
@@ -868,6 +872,53 @@ function findKartByTeamName(teamName) {
   return Object.values(karts).find((k) => k.name && normalizeTeamName(k.name).includes(target));
 }
 
+/* ============================================================
+   HISTORIQUE DES ARRÊTS — requête HTTP dédiée, séparée du polling normal.
+   Format de réponse confirmé empiriquement (cf. checkpoint script console) :
+   D<id>.P0X#<numPit>|<lap>|<inHour>|<outHour>|<pitTimeMs>|<trackTimeMs>|<relayLaps>|<driverId>|
+   On récupère TOUT l'historique depuis le vrai début de course, peu importe
+   quand cette page a été ouverte — bien plus fiable qu'un cumul en direct.
+   ============================================================ */
+const pitHistoryInFlight = {};
+
+function parsePitHistoryLine(line) {
+  const m = line.match(/^D(\d+)\.P\d+#\d+\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|?/);
+  if (!m) return null;
+  return { rawId: m[1], lap: parseInt(m[2], 10), pitTimeMs: parseInt(m[5], 10) };
+}
+
+function fetchPitHistory(kartId) {
+  if (pitHistoryInFlight[kartId]) return Promise.resolve(false);
+  pitHistoryInFlight[kartId] = true;
+  const req = "D#-999#D" + kartId + ".P#1#D" + kartId + ".INF";
+  const body = "port=" + config.port + "&request=" + encodeURIComponent(req);
+  return fetch(APEX_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: body,
+    mode: "cors",
+    credentials: "omit",
+  })
+    .then((r) => r.text())
+    .then((text) => {
+      let total = 0;
+      String(text)
+        .split(/[\n\r]+/)
+        .forEach((line) => {
+          const p = parsePitHistoryLine(line);
+          if (p) total += p.pitTimeMs;
+        });
+      const k = getKart(kartId);
+      k.totalPitMs = total; // remplace, c'est le vrai total complet recalculé par Apex
+      pitHistoryInFlight[kartId] = false;
+      return true;
+    })
+    .catch(() => {
+      pitHistoryInFlight[kartId] = false;
+      return false;
+    });
+}
+
 function pollAll() {
   // Phase 1 : tant qu'on n'a pas résolu notre kart via le nom d'équipe, on scanne.
   if (!config.myKart) {
@@ -878,6 +929,7 @@ function pollAll() {
         config.myKart = found.id;
         saveConfig(config);
         setConnStatus("live", "ÉQUIPE TROUVÉE");
+        fetchPitHistory(found.id); // historique complet dès la résolution, pas seulement au prochain cycle périodique
       }
       render();
     });
@@ -1305,8 +1357,17 @@ function startApp(c) {
   setConnStatus("", "CONNEXION...");
   render();
   if (pollTimer) clearInterval(pollTimer);
+  if (pitHistoryTimer) clearInterval(pitHistoryTimer);
   pollAll();
   pollTimer = setInterval(pollAll, POLL_INTERVAL_MS);
+
+  // Historique des arrêts : requête dédiée, moins fréquente que le polling normal
+  // (cette donnée ne change qu'à chaque nouvel arrêt, pas à chaque tour).
+  const pitIds = [config.myKart, ...config.rivals].filter(Boolean);
+  pitIds.forEach(fetchPitHistory);
+  pitHistoryTimer = setInterval(() => {
+    [config.myKart, ...config.rivals].filter(Boolean).forEach(fetchPitHistory);
+  }, PIT_HISTORY_INTERVAL_MS);
 }
 
 document.getElementById("btn-connect").addEventListener("click", () => {
@@ -1335,6 +1396,7 @@ document.getElementById("btn-connect").addEventListener("click", () => {
 
 document.getElementById("btn-edit").addEventListener("click", () => {
   if (pollTimer) clearInterval(pollTimer);
+  if (pitHistoryTimer) clearInterval(pitHistoryTimer);
   document.getElementById("app").classList.remove("active");
   document.getElementById("setup").style.display = "flex";
 });
